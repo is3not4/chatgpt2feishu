@@ -38,7 +38,8 @@ async function createTables() {
         session_id TEXT,
         question TEXT,
         answer TEXT,
-        msgSize INTEGER
+        msgSize INTEGER,
+        isDelete INTEGER
       )`,
       (err) => {
         if (err) {
@@ -113,7 +114,7 @@ async function getOpenAIReply(prompt) {
 
   const config = {
     method: "POST",
-    url: "https://api.openai.com/v1/chat/completions",
+    url: OPENAI_API_URL,
     headers: {  Authorization: `Bearer ${OPENAI_KEY}`, "Content-Type": "application/json" },
     data: completion,
     timeout: 50000
@@ -229,7 +230,7 @@ app.get("/", async (req, resp) => {
 async function saveConversation(sessionId, question, answer) {
   const msgSize = question.length + answer.length
   const result = await new Promise((resolve, reject) => {
-    db.run(`INSERT INTO ${MsgTable}(session_id, question, answer, msgSize) VALUES (?,?,?,?)`, [sessionId, question, answer, msgSize], (err) => {
+    db.run(`INSERT INTO ${MsgTable}(session_id, question, answer, msgSize,isDelete) VALUES (?,?,?,?,?)`, [sessionId, question, answer, msgSize,0], (err) => {
       if (err) {
         reject(err);
       } else {
@@ -247,7 +248,7 @@ async function discardConversation(sessionId) {
   let totalSize = 0;
   const countList = [];
   const historyMsgs = await new Promise((resolve, reject) => {
-    db.all(`SELECT id, msgSize FROM ${MsgTable} WHERE session_id = ?`, [sessionId], (err) => {
+    db.all(`SELECT id, msgSize FROM ${MsgTable} WHERE session_id = ? ans isDelete = 0`, [sessionId], (err) => {
       if (err) {
         reject(err);
       } else {
@@ -266,7 +267,7 @@ async function discardConversation(sessionId) {
   }
   for (const c of countList) {
     if (c.totalSize > OPENAI_MAX_TOKEN) {
-      db.run(`DELETE FROM ${MsgTable} WHERE id = ?`, [c.msgId])
+      db.run(`UPDATE ${MsgTable} SET isDelete = 1 WHERE id = ?`, [c.msgId])
     }
   }
 }
@@ -274,7 +275,7 @@ async function discardConversation(sessionId) {
 // 清除历史会话
 async function clearConversation(sessionId) {
   return new Promise((resolve, reject) => {
-    db.run(`DELETE FROM ${MsgTable} WHERE session_id = ?`, [sessionId], function (
+    db.run(`UPDATE ${MsgTable} SET isDelete = 1 WHERE session_id = ?`, [sessionId], function (
       err
     ) {
       if (err) {
@@ -324,7 +325,7 @@ async function buildConversation(sessionId, question) {
   let prompt = [];
 
   const historyMsgs = await new Promise((resolve, reject) => {
-    db.all(`SELECT question, answer FROM ${MsgTable} WHERE session_id = ? order by id desc LIMIT ${OPENAI_MAX_TOKEN}`, [sessionId], (err, rows) => {
+    db.all(`SELECT question, answer FROM ${MsgTable} WHERE session_id = ? and isDelete = 0`, [sessionId], (err, rows) => {
       if (err) reject(err);
       resolve(rows);
     });
@@ -337,8 +338,6 @@ async function buildConversation(sessionId, question) {
       prompt.push({ role: "assistant", content: conversation.answer });
     }
   }
-
-  prompt.reverse();
   
   // 拼接最新 question
   prompt.push({role: "user", content: question});
