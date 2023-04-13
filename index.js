@@ -19,6 +19,7 @@ const OPENAI_KEY = process.env.KEY || ""; // OpenAI 的 Key
 // const OPENAI_MODEL = process.env.MODEL || "text-davinci-003"; // 使用的模型，是针对一般自然语言处理任务设计的，例如文本生成、文本分类、情感分析、文本补全等
 const OPENAI_MODEL = process.env.MODEL || "gpt-3.5-turbo"; // 最有能力的GPT-3.5模型，并为聊天进行了优化，成本是text-davinci-003的1/10。将随着我们最新的模型迭代而更新。
 const OPENAI_MAX_TOKEN = process.env.MAX_TOKEN || 1024; // 最大 token 的值
+const OPENAI_API_URL = process.env.API_URL || "https://api.openai.com/v1/chat/completions";
 
 const client = new lark.Client({
   appId: FEISHU_APP_ID,
@@ -323,7 +324,7 @@ async function buildConversation(sessionId, question) {
   let prompt = [];
 
   const historyMsgs = await new Promise((resolve, reject) => {
-    db.all(`SELECT question, answer FROM ${MsgTable} WHERE session_id = ?`, [sessionId], (err, rows) => {
+    db.all(`SELECT question, answer FROM ${MsgTable} WHERE session_id = ? order by id desc LIMIT ${OPENAI_MAX_TOKEN}`, [sessionId], (err, rows) => {
       if (err) reject(err);
       resolve(rows);
     });
@@ -337,6 +338,8 @@ async function buildConversation(sessionId, question) {
     }
   }
 
+  prompt.reverse();
+  
   // 拼接最新 question
   prompt.push({role: "user", content: question});
   return prompt;  
