@@ -7,6 +7,7 @@ const port = 9000;
 const sqlite3 = require("sqlite3").verbose();
 const sqlite = require("sqlite");
 const path = require("path"); // 引入路径处理模块
+const { log } = require("console");
 const dbName = path.join(__dirname, "data.db");
 const tableName = "t_event";
 const MsgTable = "t_msg"
@@ -248,15 +249,16 @@ async function discardConversation(sessionId) {
   let totalSize = 0;
   const countList = [];
   const historyMsgs = await new Promise((resolve, reject) => {
-    db.all(`SELECT id, msgSize FROM ${MsgTable} WHERE session_id = ? ans isDelete = 0`, [sessionId], (err) => {
+    db.all(`SELECT id, msgSize FROM ${MsgTable} WHERE session_id = ? and isDelete = 0`, [sessionId], (err,rows) => {
       if (err) {
         reject(err);
       } else {
-        resolve(true);
+        resolve(rows);
       }
     });
   });
   const historyMsgLen = historyMsgs.length;
+  logger(`historyMsgs length:${historyMsgLen}`)
   for (let i = 0; i < historyMsgLen; i++) {
     const msgId = historyMsgs[i].id;
     totalSize += historyMsgs[i].msgSize;
@@ -265,7 +267,10 @@ async function discardConversation(sessionId) {
       totalSize,
     });
   }
+  logger(`current openai_max_token:${OPENAI_MAX_TOKEN}`)
+  logger(`countList length:${countList.length}`)
   for (const c of countList) {
+    logger(c.totalSize)
     if (c.totalSize > OPENAI_MAX_TOKEN) {
       db.run(`UPDATE ${MsgTable} SET isDelete = 1 WHERE id = ?`, [c.msgId])
     }
