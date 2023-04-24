@@ -110,30 +110,30 @@ async function getOpenAIReply(prompt) {
   const completion = ({
     model: OPENAI_MODEL,
     messages: prompt
-    });
+  });
   // console.log("completion: ====>>>> ", completion);
 
   const config = {
     method: "POST",
     url: OPENAI_API_URL,
-    headers: {  Authorization: `Bearer ${OPENAI_KEY}`, "Content-Type": "application/json" },
+    headers: { Authorization: `Bearer ${OPENAI_KEY}`, "Content-Type": "application/json" },
     data: completion,
     timeout: 50000
   };
   // console.log("config: ====>>>> ", config);
 
-  try{
-      const response = await axios(config);
-      console.log("response: ", response);
-      if (response.status === 429) {
-        return '问题太多了，我有点眩晕，请稍后再试';
-      }
-      // 去除多余的换行
-      return response.data.choices[0].message.content.replace("\n\n", "");
-    
-  }catch(e){
-     logger(e)
-     return "问题太难了 出错了. (uДu〃).";
+  try {
+    const response = await axios(config);
+    console.log("response: ", response);
+    if (response.status === 429) {
+      return '问题太多了，我有点眩晕，请稍后再试';
+    }
+    // 去除多余的换行
+    return response.data.choices[0].message.content.replace("\n\n", "");
+
+  } catch (e) {
+    logger(e)
+    return "问题太难了 出错了. (uДu〃).";
   }
 }
 
@@ -229,18 +229,20 @@ app.get("/", async (req, resp) => {
 
 // 保存用户会话
 async function saveConversation(sessionId, question, answer) {
-  const msgSize = question.length + answer.length
-  const result = await new Promise((resolve, reject) => {
-    db.run(`INSERT INTO ${MsgTable}(session_id, question, answer, msgSize,isDelete) VALUES (?,?,?,?,?)`, [sessionId, question, answer, msgSize,0], (err) => {
-      if (err) {
-        reject(err);
-      } else {
-        resolve(true);
-      }
+  if (!answer.startsWith("问题太难了 出错了")) {
+    const msgSize = question.length + answer.length
+    const result = await new Promise((resolve, reject) => {
+      db.run(`INSERT INTO ${MsgTable}(session_id, question, answer, msgSize,isDelete) VALUES (?,?,?,?,?)`, [sessionId, question, answer, msgSize, 0], (err) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve(true);
+        }
+      });
     });
-  });
-  if (result) {
-    await discardConversation(sessionId);
+    if (result) {
+      await discardConversation(sessionId);
+    }
   }
 }
 
@@ -249,7 +251,7 @@ async function discardConversation(sessionId) {
   let totalSize = 0;
   const countList = [];
   const historyMsgs = await new Promise((resolve, reject) => {
-    db.all(`SELECT id, msgSize FROM ${MsgTable} WHERE session_id = ? and isDelete = 0`, [sessionId], (err,rows) => {
+    db.all(`SELECT id, msgSize FROM ${MsgTable} WHERE session_id = ? and isDelete = 0`, [sessionId], (err, rows) => {
       if (err) {
         reject(err);
       } else {
@@ -343,10 +345,10 @@ async function buildConversation(sessionId, question) {
       prompt.push({ role: "assistant", content: conversation.answer });
     }
   }
-  
+
   // 拼接最新 question
-  prompt.push({role: "user", content: question});
-  return prompt;  
+  prompt.push({ role: "user", content: question });
+  return prompt;
 }
 
 
@@ -368,7 +370,7 @@ app.post("/", async (req, resp, context) => {
     }
   }
   // console.log("req", req);
-  
+
   const callback = (msg) => {
     resp.setHeader("Content-Type", "application/json");
     msg.challenge = params.challenge;
@@ -432,7 +434,7 @@ app.post("/", async (req, resp, context) => {
           resolve();
         }
       });
-    });    
+    });
 
     // 私聊直接回复
     if (params.event.message.chat_type === "p2p") {
@@ -486,7 +488,7 @@ async function handleReply(userInput, sessionId, messageId, openId, eventId) {
   const openaiResponse = await getOpenAIReply(prompt);
   await saveConversation(sessionId, question, openaiResponse)
   await reply(messageId, openId, openaiResponse);
-  
+
   const evt_record = await new Promise((resolve, reject) => {
     db.get(`SELECT * FROM ${tableName} WHERE event_id = ?`, [eventId], (err, row) => {
       if (err) {
@@ -505,7 +507,7 @@ async function handleReply(userInput, sessionId, messageId, openId, eventId) {
         resolve();
       }
     });
-  });    
+  });
   return { code: 0 };
 }
 
